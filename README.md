@@ -1,5 +1,15 @@
 # com.aigc.toolchain
 
+## 中文简介
+
+这是一个面向 Unity 编辑器的 AIGC 资源生成工具包。
+它会先用 Qwen 扩展简短描述，再将最终提示词提交到 ComfyUI，最后把生成的 PNG 自动导入 Unity。
+
+## 版本说明（重要）
+
+当前版本为个人开发的初级版本（Early Version），可能存在稳定性、易用性和兼容性问题。
+欢迎在使用过程中根据实际项目需求进行修改和扩展。
+
 Editor-only Unity package for AIGC asset generation.
 It expands a short description with Qwen and submits the final prompt to ComfyUI, then imports the generated PNG into Unity.
 
