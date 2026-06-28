@@ -1,0 +1,306 @@
+﻿{
+    "48":  {
+               "inputs":  {
+                              "control_net_name":  "thibaud_xl_openpose.safetensors"
+                          },
+               "class_type":  "ControlNetLoader",
+               "_meta":  {
+                             "title":  "加载ControlNet模型"
+                         }
+           },
+    "49":  {
+               "inputs":  {
+                              "image":  "Pose_49.png",
+                              "Add pose":  "add_pose",
+                              "Reset pose":  "reset_pose",
+                              "widget_openpose":  {
+                                                      "undo_history":  [
+                                                                           {
+                                                                               "keypoints":  [
+                                                                                                 [
+                                                                                                     241,
+                                                                                                     77
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     241,
+                                                                                                     120
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     191,
+                                                                                                     118
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     177,
+                                                                                                     183
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     163,
+                                                                                                     252
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     298,
+                                                                                                     118
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     317,
+                                                                                                     182
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     332,
+                                                                                                     245
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     225,
+                                                                                                     241
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     213,
+                                                                                                     359
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     215,
+                                                                                                     454
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     270,
+                                                                                                     240
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     282,
+                                                                                                     360
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     286,
+                                                                                                     456
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     232,
+                                                                                                     59
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     253,
+                                                                                                     60
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     225,
+                                                                                                     70
+                                                                                                 ],
+                                                                                                 [
+                                                                                                     260,
+                                                                                                     72
+                                                                                                 ]
+                                                                                             ]
+                                                                           }
+                                                                       ],
+                                                      "redo_history":  [
+
+                                                                       ],
+                                                      "currentCanvasSize":  {
+                                                                                "width":  512,
+                                                                                "height":  512
+                                                                            },
+                                                      "background":  null,
+                                                      "backgroundColor":  null
+                                                  }
+                          },
+               "class_type":  "PoseNode",
+               "_meta":  {
+                             "title":  "PoseNode - 512x512"
+                         }
+           },
+    "52":  {
+               "inputs":  {
+                              "model_name":  "4xUltrasharp_4xUltrasharpV10.pt"
+                          },
+               "class_type":  "UpscaleModelLoader",
+               "_meta":  {
+                             "title":  "加载放大模型"
+                         }
+           },
+    "53":  {
+               "inputs":  {
+                              "samples":  [
+                                              "60",
+                                              0
+                                          ],
+                              "vae":  [
+                                          "59",
+                                          2
+                                      ]
+                          },
+               "class_type":  "VAEDecode",
+               "_meta":  {
+                             "title":  "VAE解码"
+                         }
+           },
+    "56":  {
+               "inputs":  {
+                              "lora_name":  "Smooth_Booster_v3.safetensors",
+                              "strength_model":  0,
+                              "strength_clip":  1,
+                              "model":  [
+                                            "59",
+                                            0
+                                        ],
+                              "clip":  [
+                                           "59",
+                                           1
+                                       ]
+                          },
+               "class_type":  "LoraLoader",
+               "_meta":  {
+                             "title":  "加载LoRA"
+                         }
+           },
+    "58":  {
+               "inputs":  {
+                              "vae_name":  "vae-ft-mse-840000-ema-pruned.safetensors"
+                          },
+               "class_type":  "VAELoader",
+               "_meta":  {
+                             "title":  "加载VAE"
+                         }
+           },
+    "59":  {
+               "inputs":  {
+                              "ckpt_name":  "novaAnimeXL_ilV170.safetensors"
+                          },
+               "class_type":  "CheckpointLoaderSimple",
+               "_meta":  {
+                             "title":  "Checkpoint加载器（简易）"
+                         }
+           },
+    "60":  {
+               "inputs":  {
+                              "seed":  157979169218309,
+                              "steps":  25,
+                              "cfg":  6.5,
+                              "sampler_name":  "dpmpp_2m_sde",
+                              "scheduler":  "karras",
+                              "denoise":  1,
+                              "model":  [
+                                            "56",
+                                            0
+                                        ],
+                              "positive":  [
+                                               "62",
+                                               0
+                                           ],
+                              "negative":  [
+                                               "61",
+                                               0
+                                           ],
+                              "latent_image":  [
+                                                   "65",
+                                                   0
+                                               ]
+                          },
+               "class_type":  "KSampler",
+               "_meta":  {
+                             "title":  "K采样器"
+                         }
+           },
+    "61":  {
+               "inputs":  {
+                              "text":  "lowres, blurry, ugly, extra limbs, missing fingers, bad hands, blurry face, logo, watermark, multiple characters, duplicate character, duplicated body, clones, repeated character, multiple views, turnaround sheet, character sheet grid, grid layout, collage, split screen, four panels, contact sheet, two characters, group shot, cropped body, headless, faceless, mask face, mascot costume, animal hood, frog hood, deformed anatomy, scenery, environment, background scene, landscape, outdoor, forest, trees, mountains, snowfield, snow ground, ice cave, frozen lake, sky, clouds, horizon, room, wall, floor, platform, pedestal, props in background, decorative background, gradient background, bokeh background",
+                              "clip":  [
+                                           "56",
+                                           1
+                                       ]
+                          },
+               "class_type":  "CLIPTextEncode",
+               "_meta":  {
+                             "title":  "CLIP文本编码"
+                         }
+           },
+    "62":  {
+               "inputs":  {
+                              "text":  "__PROMPT__",
+                              "clip":  [
+                                           "56",
+                                           1
+                                       ]
+                          },
+               "class_type":  "CLIPTextEncode",
+               "_meta":  {
+                             "title":  "CLIP文本编码"
+                         }
+           },
+    "64":  {
+               "inputs":  {
+                              "filename_prefix":  "ComfyUI",
+                              "images":  [
+                                             "66",
+                                             0
+                                         ]
+                          },
+               "class_type":  "SaveImage",
+               "_meta":  {
+                             "title":  "保存图像"
+                         }
+           },
+    "65":  {
+               "inputs":  {
+                              "width":  896,
+                              "height":  1152,
+                              "batch_size":  1
+                          },
+               "class_type":  "EmptyLatentImage",
+               "_meta":  {
+                             "title":  "空Latent图像"
+                         }
+           },
+    "66":  {
+               "inputs":  {
+                              "upscale_by":  1.5,
+                              "seed":  315826754788845,
+                              "steps":  20,
+                              "cfg":  6,
+                              "sampler_name":  "euler",
+                              "scheduler":  "simple",
+                              "denoise":  0.15,
+                              "mode_type":  "Linear",
+                              "tile_width":  512,
+                              "tile_height":  512,
+                              "mask_blur":  8,
+                              "tile_padding":  32,
+                              "seam_fix_mode":  "None",
+                              "seam_fix_denoise":  1,
+                              "seam_fix_width":  64,
+                              "seam_fix_mask_blur":  8,
+                              "seam_fix_padding":  16,
+                              "force_uniform_tiles":  true,
+                              "tiled_decode":  false,
+                              "batch_size":  1,
+                              "model":  [
+                                            "59",
+                                            0
+                                        ],
+                              "vae":  [
+                                          "59",
+                                          2
+                                      ],
+                              "upscale_model":  [
+                                                    "52",
+                                                    0
+                                                ]
+                          },
+               "class_type":  "UltimateSDUpscale",
+               "_meta":  {
+                             "title":  "Ultimate SD Upscale"
+                         }
+           },
+    "69":  {
+               "inputs":  {
+                              "filename_prefix":  "ComfyUI",
+                              "images":  [
+                                             "53",
+                                             0
+                                         ]
+                          },
+               "class_type":  "SaveImage",
+               "_meta":  {
+                             "title":  "保存图像"
+                         }
+           }
+}

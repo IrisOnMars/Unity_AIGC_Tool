@@ -1,0 +1,10 @@
+{
+  "name": "com.aigc.toolchain",
+  "version": "1.0.0",
+  "displayName": "AIGC Toolchain",
+  "description": "Editor-only Unity AIGC asset generation pipeline for Qwen prompt extension and ComfyUI image generation.",
+  "unity": "2021.3",
+  "author": {
+    "name": "AIGC Toolchain"
+  }
+}
