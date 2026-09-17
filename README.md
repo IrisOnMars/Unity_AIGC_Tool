@@ -20,6 +20,9 @@ It expands a short description with Qwen and submits the final prompt to ComfyUI
 - Prompt extension pipeline (supports CJK source text)
 - ComfyUI submission, polling, and output download
 - Auto import generated image into Assets/AIGC_Generated
+- Optional GameAssetAIStudio image-to-3D stage
+- Canonical GLB plus Unity-native OBJ import
+- Per-asset manifest and quality report
 
 ## Package Info
 
@@ -47,7 +50,20 @@ It expands a short description with Qwen and submits the final prompt to ComfyUI
    - ComfyUI Base URL (default: http://127.0.0.1:8188)
    - Auto Start Qwen and Python/Script paths if using local server startup
 3. Enter Source Description and click Generate Asset.
-4. Generated image will be saved and imported under Assets/AIGC_Generated.
+4. Enable Generate 3D Model to continue from the concept image into Hunyuan3D.
+5. Generated asset packages are saved and imported under Assets/AIGC_Generated.
+
+## GameAssetAIStudio Integration
+
+The default integration expects `F:\GameAssetAIStudio` and its project virtual environment. The Unity window can auto-start the lightweight REST API at `http://127.0.0.1:7861`; ComfyUI must still be available at the configured base URL.
+
+Each 3D generation creates a folder containing:
+
+- `concept.png`: the ComfyUI concept image sent to Hunyuan3D
+- `model.glb`: canonical engine-neutral output
+- `model.obj`: Unity-native model selected in the Project window
+- `manifest.json`: reproducibility and source metadata
+- `quality_report.json`: image and mesh inspection results
 
 ## Local Qwen Server Notes
 

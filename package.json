@@ -1,8 +1,8 @@
 {
   "name": "com.aigc.toolchain",
-  "version": "1.0.0",
+  "version": "1.3.1",
   "displayName": "AIGC Toolchain",
-  "description": "Editor-only Unity AIGC asset generation pipeline for Qwen prompt extension and ComfyUI image generation.",
+  "description": "Editor-only Unity pipeline for type-aware Qwen prompt extension, Z-Image Turbo game asset generation, and GameAssetAIStudio image-to-3D import.",
   "unity": "2021.3",
   "author": {
     "name": "AIGC Toolchain"

@@ -18,6 +18,7 @@ namespace AIGC.Toolchain.Editor
         private const string GenerationTimeoutPrefKey = "AIGC.Toolchain.GenerationTimeoutSeconds";
         private const string TemplateFileName = "single_image_api.json";
         private const string PromptPlaceholder = "__PROMPT__";
+        private const string NegativePromptPlaceholder = "__NEGATIVE_PROMPT__";
         private const double PollIntervalSeconds = 1.0d;
         private const int SubmitTimeoutSeconds = 30;
         private const int PollRequestTimeoutSeconds = 15;
@@ -120,6 +121,11 @@ namespace AIGC.Toolchain.Editor
             }
 
             string replacedJson = templateJson.Replace(PromptPlaceholder, MiniJson.EscapeString(finalPrompt));
+            if (replacedJson.Contains(NegativePromptPlaceholder))
+            {
+                string dynamicNegativePrompt = BuildDynamicNegativePrompt(finalPrompt);
+                replacedJson = replacedJson.Replace(NegativePromptPlaceholder, MiniJson.EscapeString(dynamicNegativePrompt));
+            }
             object parsedTemplate;
 
             try
@@ -135,6 +141,8 @@ namespace AIGC.Toolchain.Editor
             {
                 throw new InvalidOperationException($"{TemplateFileName} is not valid JSON after prompt replacement.");
             }
+
+            RandomizeGenerationSeeds(parsedTemplate);
 
             Dictionary<string, object> requestRoot;
             if (parsedTemplate is Dictionary<string, object> root && root.ContainsKey("prompt"))
@@ -155,6 +163,204 @@ namespace AIGC.Toolchain.Editor
             }
 
             return MiniJson.Serialize(requestRoot);
+        }
+
+        private static void RandomizeGenerationSeeds(object workflow)
+        {
+            if (!(workflow is Dictionary<string, object> nodes))
+            {
+                return;
+            }
+
+            if (nodes.TryGetValue("prompt", out object promptValue) &&
+                promptValue is Dictionary<string, object> promptNodes)
+            {
+                nodes = promptNodes;
+            }
+
+            foreach (KeyValuePair<string, object> nodeEntry in nodes)
+            {
+                if (!(nodeEntry.Value is Dictionary<string, object> node) ||
+                    !node.TryGetValue("inputs", out object inputsValue) ||
+                    !(inputsValue is Dictionary<string, object> inputs))
+                {
+                    continue;
+                }
+
+                RandomizeNumericSeed(inputs, "seed");
+                RandomizeNumericSeed(inputs, "noise_seed");
+            }
+        }
+
+        private static void RandomizeNumericSeed(Dictionary<string, object> inputs, string key)
+        {
+            if (!inputs.TryGetValue(key, out object currentValue) || !IsNumericJsonValue(currentValue))
+            {
+                return;
+            }
+
+            byte[] bytes = Guid.NewGuid().ToByteArray();
+            long seed = BitConverter.ToInt64(bytes, 0) & long.MaxValue;
+            inputs[key] = seed;
+        }
+
+        private static bool IsNumericJsonValue(object value)
+        {
+            return value is byte || value is sbyte || value is short || value is ushort ||
+                   value is int || value is uint || value is long || value is ulong ||
+                   value is float || value is double || value is decimal;
+        }
+
+        private static string BuildDynamicNegativePrompt(string finalPrompt)
+        {
+            string lower = (finalPrompt ?? string.Empty).ToLowerInvariant();
+            List<string> terms = new List<string>
+            {
+                "display pedestal",
+                "round base",
+                "stage",
+                "spotlight beam",
+                "light column",
+                "dramatic backdrop",
+                "colored background glow",
+                "cast shadow",
+                "background silhouette",
+                "inset image"
+            };
+
+            bool isCharacter = ContainsAny(
+                lower,
+                "game character", "one character", "full-body figure", "visible face", "elf", "archer", "warrior", "knight", "mage");
+            bool isCreature = ContainsAny(lower, "game creature", "one creature", "creature anatomy");
+            bool isProp = ContainsAny(lower, "game prop", "one object only", "isolated object", "centered object");
+            bool isArcher = isCharacter && ContainsAny(lower, "archer", "bowman", "bow user", "longbow");
+            bool isElf = isCharacter && ContainsAny(lower, "elf", "elven");
+            bool requestsMagic = ContainsAny(
+                lower,
+                "magic archer", "arcane archer", "mage", "wizard", "sorcer", "spell",
+                "elemental", "fire archer", "ice archer", "lightning archer");
+
+            if (isProp)
+            {
+                terms.AddRange(new[]
+                {
+                    "person",
+                    "human",
+                    "humanoid",
+                    "character",
+                    "face",
+                    "portrait",
+                    "full body person",
+                    "arms",
+                    "legs",
+                    "hands",
+                    "clothing",
+                    "human silhouette"
+                });
+            }
+            else if (isCreature)
+            {
+                terms.AddRange(new[]
+                {
+                    "human",
+                    "humanoid person",
+                    "rider",
+                    "handler",
+                    "multiple creatures",
+                    "duplicate creature"
+                });
+            }
+            else if (isCharacter)
+            {
+                terms.AddRange(new[]
+                {
+                    "cropped body",
+                    "cropped feet",
+                    "duplicate character",
+                    "multiple characters",
+                    "extra limbs",
+                    "humanoid shadow",
+                    "inset figure"
+                });
+            }
+
+            if (isElf)
+            {
+                terms.AddRange(new[]
+                {
+                    "human ears",
+                    "round ears",
+                    "hidden ears",
+                    "cropped ears"
+                });
+            }
+
+            if (isArcher)
+            {
+                terms.AddRange(new[]
+                {
+                    "two bows",
+                    "two longbows",
+                    "multiple bows",
+                    "duplicate bow",
+                    "second bow",
+                    "second longbow",
+                    "mirrored weapon",
+                    "broken bow",
+                    "deformed bow",
+                    "sword",
+                    "longsword",
+                    "blade weapon",
+                    "staff",
+                    "wand",
+                    "spellbook",
+                    "scepter",
+                    "melee weapon",
+                    "empty quiver",
+                    "missing bow",
+                    "bow cropped out",
+                    "hidden bowstring",
+                    "character silhouette in background",
+                    "shadow person",
+                    "reference silhouette",
+                    "back view"
+                });
+
+                if (!requestsMagic)
+                {
+                    terms.AddRange(new[]
+                    {
+                        "mage",
+                        "wizard",
+                        "spellcaster",
+                        "fireball",
+                        "magic orb",
+                        "glowing rune",
+                        "spellcasting pose",
+                        "magic particles around hands"
+                    });
+                }
+            }
+
+            return string.Join(", ", terms);
+        }
+
+        private static bool ContainsAny(string value, params string[] terms)
+        {
+            if (string.IsNullOrEmpty(value) || terms == null)
+            {
+                return false;
+            }
+
+            foreach (string term in terms)
+            {
+                if (!string.IsNullOrEmpty(term) && value.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string FindTemplatePath()

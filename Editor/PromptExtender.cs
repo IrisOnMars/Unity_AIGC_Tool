@@ -12,6 +12,14 @@ using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
 namespace AIGC.Toolchain.Editor
 {
+    public enum AigcAssetType
+    {
+        Auto,
+        Character,
+        Creature,
+        Prop
+    }
+
     public static class PromptExtender
     {
         public const string DefaultEndpoint = "http://127.0.0.1:8000/v1/chat/completions";
@@ -33,6 +41,13 @@ namespace AIGC.Toolchain.Editor
         private const double ServerPollIntervalSeconds = 1.0d;
         private const double ProcessStopTimeoutSeconds = 6.0d;
         private const int DefaultStartupTimeoutSeconds = 120;
+
+        private enum SubjectKind
+        {
+            Character,
+            Creature,
+            Prop
+        }
 
         public static string Endpoint
         {
@@ -89,6 +104,16 @@ namespace AIGC.Toolchain.Editor
 
         public static void ExtendPrompt(string rawDescription, Action<string> onSuccess, Action<string> onError, Action<string> onStatus)
         {
+            ExtendPrompt(rawDescription, AigcAssetType.Auto, onSuccess, onError, onStatus);
+        }
+
+        public static void ExtendPrompt(
+            string rawDescription,
+            AigcAssetType assetType,
+            Action<string> onSuccess,
+            Action<string> onError,
+            Action<string> onStatus = null)
+        {
             if (onError == null)
             {
                 onError = Debug.LogError;
@@ -106,12 +131,13 @@ namespace AIGC.Toolchain.Editor
                 return;
             }
 
-            new PromptExtensionSession(rawDescription.Trim(), onSuccess, onError, onStatus).Start();
+            new PromptExtensionSession(rawDescription.Trim(), assetType, onSuccess, onError, onStatus).Start();
         }
 
         private sealed class PromptExtensionSession
         {
             private readonly string rawDescription;
+            private readonly AigcAssetType assetType;
             private readonly Action<string> onSuccess;
             private readonly Action<string> onError;
             private readonly Action<string> onStatus;
@@ -124,9 +150,15 @@ namespace AIGC.Toolchain.Editor
             private double startupStartedAt;
             private double nextPollAt;
 
-            public PromptExtensionSession(string rawDescription, Action<string> onSuccess, Action<string> onError, Action<string> onStatus)
+            public PromptExtensionSession(
+                string rawDescription,
+                AigcAssetType assetType,
+                Action<string> onSuccess,
+                Action<string> onError,
+                Action<string> onStatus)
             {
                 this.rawDescription = rawDescription;
+                this.assetType = assetType;
                 this.onSuccess = onSuccess;
                 this.onError = onError;
                 this.onStatus = onStatus;
@@ -287,14 +319,14 @@ namespace AIGC.Toolchain.Editor
                         translatedSubject =>
                         {
                             onStatus?.Invoke("Extending translated prompt...");
-                            RequestExpandedPrompt(translatedSubject, FinishSuccess, Fail);
+                            RequestExpandedPrompt(translatedSubject, assetType, FinishSuccess, Fail);
                         },
                         Fail);
                     return;
                 }
 
                 onStatus?.Invoke("Extending prompt...");
-                RequestExpandedPrompt(rawDescription, FinishSuccess, Fail);
+                RequestExpandedPrompt(rawDescription, assetType, FinishSuccess, Fail);
             }
 
             private void FinishSuccess(string prompt)
@@ -394,12 +426,16 @@ namespace AIGC.Toolchain.Editor
                 BuildHeaders());
         }
 
-        private static void RequestExpandedPrompt(string subjectDescription, Action<string> onSuccess, Action<string> onError)
+        private static void RequestExpandedPrompt(
+            string subjectDescription,
+            AigcAssetType assetType,
+            Action<string> onSuccess,
+            Action<string> onError)
         {
             string requestJson;
             try
             {
-                requestJson = BuildRequestJson(subjectDescription);
+                requestJson = BuildRequestJson(subjectDescription, assetType);
             }
             catch (Exception ex)
             {
@@ -416,7 +452,7 @@ namespace AIGC.Toolchain.Editor
                     string extendedPrompt;
                     try
                     {
-                        extendedPrompt = ParsePromptContent(responseText);
+                        extendedPrompt = ApplySubjectConstraints(subjectDescription, assetType, ParsePromptContent(responseText));
                     }
                     catch (Exception ex)
                     {
@@ -444,9 +480,10 @@ namespace AIGC.Toolchain.Editor
                     {
                         ["role"] = "system",
                         ["content"] =
-                            "Translate Chinese fantasy game character descriptions to concise English noun phrases. " +
-                            "Preserve species, role, abilities, elements, weapons, and visual traits. In fantasy game context, translate jingling as elf, not spirit, unless the source explicitly means soul or ghost. " +
-                            "Examples: kongzhi bingxue de jingling -> elf who controls ice and snow; yaojing gongjianshou -> fairy archer. Return only the English translation."
+                            "Translate Chinese game asset descriptions to concise English noun phrases. " +
+                            "The asset may be a character, creature, weapon, prop, building, or vehicle. Preserve the exact subject type, count, materials, role, abilities, and visual traits. " +
+                            "In fantasy game context, translate jingling as elf, not spirit, unless the source explicitly means soul or ghost. " +
+                            "Examples: yi ge baoxiang -> one treasure chest; kongzhi bingxue de jingling -> elf who controls ice and snow; yaojing gongjianshou -> fairy archer. Return only the English translation."
                     },
                     new Dictionary<string, object>
                     {
@@ -459,8 +496,41 @@ namespace AIGC.Toolchain.Editor
             return MiniJson.Serialize(requestBody);
         }
 
-        private static string BuildRequestJson(string rawDescription)
+        private static string BuildRequestJson(string rawDescription, AigcAssetType assetType)
         {
+            SubjectKind subjectKind = ResolveSubjectKind(rawDescription, assetType);
+            string kindName = subjectKind == SubjectKind.Character
+                ? "character"
+                : subjectKind == SubjectKind.Creature
+                    ? "creature"
+                    : "prop or object";
+            string composition = BuildCompositionInstruction(subjectKind);
+            string exclusions = subjectKind == SubjectKind.Prop
+                ? "Do not add a person, humanoid, character, creature, face, hands, body, clothing, pose, or unrelated object."
+                : subjectKind == SubjectKind.Creature
+                    ? "Do not turn the creature into a human or add a rider, handler, second creature, or unrelated prop."
+                    : "Do not replace the character with a different species, profession, class, or unrelated prop.";
+            string subjectRules;
+            if (subjectKind == SubjectKind.Character)
+            {
+                subjectRules =
+                    "Preserve every species, profession, item of equipment, material, and weapon literally. " +
+                    "When the subject is an archer, show exactly one longbow held at the side with a visible grip, attached bowstring, visible quiver, and empty free hand. " +
+                    "Do not add a different weapon, costume archetype, or magical effect unless explicitly requested.";
+            }
+            else if (subjectKind == SubjectKind.Creature)
+            {
+                subjectRules =
+                    "Preserve the exact species, anatomy, count, colors, materials, and explicitly requested abilities. " +
+                    "Do not add equipment, clothing, a rider, or magical effects unless explicitly requested.";
+            }
+            else
+            {
+                subjectRules =
+                    "Preserve the exact object type, count, construction, materials, colors, functional parts, and condition. " +
+                    "Do not anthropomorphize the object and do not add unrelated equipment or magical effects unless explicitly requested.";
+            }
+
             Dictionary<string, object> requestBody = new Dictionary<string, object>
             {
                 ["model"] = Model,
@@ -475,7 +545,8 @@ namespace AIGC.Toolchain.Editor
                         ["content"] =
                             "You are a strict game prompt editor. Your job is enrichment, not subject replacement. " +
                             "The final answer must start with the given English subject noun phrase. " +
-                            "Return one English comma-separated positive prompt for a single full-body game character concept image isolated on a pure white empty background. Never output a different subject. " +
+                            "Return one English comma-separated positive prompt for exactly one " + kindName + " isolated on a pure white empty background. Never output a different subject type. " +
+                            "Never invent a different class, weapon, elemental power, spell, costume archetype, character, creature, or prop. " +
                             "Do not include explanations, markdown, JSON, labels, or negative prompts."
                     },
                     new Dictionary<string, object>
@@ -483,12 +554,14 @@ namespace AIGC.Toolchain.Editor
                         ["role"] = "user",
                         ["content"] =
                             "ENGLISH_SUBJECT: " + rawDescription +
-                            "\nCreate a ComfyUI positive prompt for this exact subject as one solo game character design image." +
+                            "\nASSET_TYPE: " + kindName +
+                            "\nCreate a ComfyUI positive prompt for this exact game asset." +
                             "\nThe first words of the answer must be ENGLISH_SUBJECT exactly or a lightly polished version of it." +
-                            "\nDo not output warrior, dragon, robot, monster, vehicle, or landscape unless present in ENGLISH_SUBJECT." +
-                            "\nComposition: one solo character only, single subject, centered full-body figure, front view or three-quarter view, isolated product cutout on pure white empty background." +
-                            "\nElemental powers must appear only as small local effects attached to the character's hands, hair, costume, accessories, or held props." +
-                            "\nInclude: visible face, clear silhouette, costume and equipment details, pure white canvas, even studio lighting, texture quality, and render quality."
+                            "\n" + exclusions +
+                            "\n" + subjectRules +
+                            "\nComposition: " + composition +
+                            "\nOnly include visual effects that ENGLISH_SUBJECT explicitly requests, and keep them local to the subject." +
+                            "\nInclude a clear silhouette, pure white canvas, flat shadowless catalog lighting, detailed materials, texture quality, and render quality."
                     }
                 }
             };
@@ -637,7 +710,8 @@ namespace AIGC.Toolchain.Editor
             }
 
             content = RemoveInlineSubjectLabel(content);
-            return EnsureSingleCharacterDefaults(CompactCommaSeparatedPrompt(content.Replace("\r", " ").Replace("\n", " ").Trim()));
+            content = StripKnownPrefix(content, "ENGLISH_SUBJECT ");
+            return CompactCommaSeparatedPrompt(content.Replace("\r", " ").Replace("\n", " ").Trim());
         }
 
         private static string RemoveInlineSubjectLabel(string content)
@@ -654,38 +728,69 @@ namespace AIGC.Toolchain.Editor
             return content;
         }
 
-        private static string EnsureSingleCharacterDefaults(string content)
+        private static string EnsureAssetDefaults(string content, SubjectKind subjectKind)
         {
             string result = content ?? string.Empty;
             string lower = result.ToLowerInvariant();
-            string[] defaults =
+            string[] defaults;
+            if (subjectKind == SubjectKind.Character)
             {
-                "single full-body game character concept art",
-                "one character only",
-                "solo",
-                "single subject",
-                "centered composition",
-                "one centered full-body figure",
-                "visible face",
-                "isolated product cutout",
-                "pure white empty background",
-                "white canvas",
-                "studio lighting"
-            };
+                defaults = new[]
+                {
+                    "single full-body game character concept art",
+                    "one character only",
+                    "single centered full-body figure",
+                    "visible face",
+                    "complete body visible from head to feet",
+                    "isolated product cutout",
+                    "pure white empty background",
+                    "flat studio lighting"
+                };
+            }
+            else if (subjectKind == SubjectKind.Creature)
+            {
+                defaults = new[]
+                {
+                    "single game creature concept art",
+                    "one creature only",
+                    "single centered creature",
+                    "complete creature fully visible",
+                    "clear creature silhouette",
+                    "isolated product cutout",
+                    "pure white empty background",
+                    "flat studio lighting"
+                };
+            }
+            else
+            {
+                defaults = new[]
+                {
+                    "single game prop concept art",
+                    "exactly one object only",
+                    "single centered object",
+                    "complete object fully visible",
+                    "three-quarter front view",
+                    "clear object silhouette",
+                    "isolated product cutout",
+                    "pure white empty background",
+                    "flat studio lighting",
+                    "detailed material definition"
+                };
+            }
 
             foreach (string item in defaults)
             {
                 AppendPromptToken(ref result, ref lower, item);
             }
 
-            if (lower.Contains("elf") || lower.Contains("fairy"))
+            if (subjectKind == SubjectKind.Character && (lower.Contains("elf") || lower.Contains("fairy")))
             {
                 AppendPromptToken(ref result, ref lower, "elegant humanoid elf face");
                 AppendPromptToken(ref result, ref lower, "pointed ears");
                 AppendPromptToken(ref result, ref lower, "slender fantasy silhouette");
             }
 
-            if (lower.Contains("ice") || lower.Contains("snow") || lower.Contains("frost"))
+            if (subjectKind != SubjectKind.Prop && (lower.Contains("ice") || lower.Contains("snow") || lower.Contains("frost")))
             {
                 AppendPromptToken(ref result, ref lower, "ice crystal ornaments");
                 AppendPromptToken(ref result, ref lower, "snowflake motifs");
@@ -695,6 +800,251 @@ namespace AIGC.Toolchain.Editor
             }
 
             return result.Length > 1200 ? result.Substring(0, 1200).Trim().TrimEnd(',') : result;
+        }
+
+        private static string ApplySubjectConstraints(string subjectDescription, AigcAssetType assetType, string content)
+        {
+            string subject = (subjectDescription ?? string.Empty).Trim();
+            string subjectLower = subject.ToLowerInvariant();
+            SubjectKind subjectKind = ResolveSubjectKind(subject, assetType);
+            bool isArcher = subjectKind == SubjectKind.Character && ContainsAny(subjectLower, "archer", "bowman", "bow user", "bow-wielding");
+            bool isElf = subjectKind == SubjectKind.Character && ContainsAny(subjectLower, "elf", "elven");
+            bool allowsMagic = ContainsAny(
+                subjectLower,
+                "magic", "mage", "wizard", "sorcer", "witch", "spell", "elemental",
+                "fire", "flame", "ice", "snow", "frost", "lightning", "thunder",
+                "wind", "water", "earth", "shadow", "holy", "necrom");
+            bool requestsLooseGarment = ContainsAny(subjectLower, "robe", "cloak", "cape", "gown");
+
+            string filtered = FilterPromptSegments(content, subjectKind, isArcher, allowsMagic, requestsLooseGarment);
+            string result = subject;
+            string lower = result.ToLowerInvariant();
+
+            if (isElf)
+            {
+                AppendPromptToken(ref result, ref lower, "clearly non-human elf identity");
+                AppendPromptToken(ref result, ref lower, "two long pointed elf ears extending sideways and fully visible");
+            }
+
+            if (isArcher)
+            {
+                AppendPromptToken(ref result, ref lower, "unmistakable archer identity");
+                AppendPromptToken(ref result, ref lower, "exactly one clearly visible longbow held vertically at the side");
+                AppendPromptToken(ref result, ref lower, "clear hand grip on the single longbow and its bowstring visibly attached to the same bow");
+                AppendPromptToken(ref result, ref lower, "quiver filled with arrows clearly visible on the back");
+                AppendPromptToken(ref result, ref lower, "free hand relaxed and empty");
+                AppendPromptToken(ref result, ref lower, "practical fitted fantasy archer clothing");
+            }
+
+            if (subjectKind == SubjectKind.Character)
+            {
+                AppendPromptToken(ref result, ref lower, "one isolated character only, single centered subject");
+                AppendPromptToken(ref result, ref lower, "detailed facial features with visible eyes, nose, and mouth");
+                AppendPromptToken(ref result, ref lower, "generous white margin around the complete full body");
+            }
+            else if (subjectKind == SubjectKind.Creature)
+            {
+                AppendPromptToken(ref result, ref lower, "one isolated creature only, single centered subject");
+                AppendPromptToken(ref result, ref lower, "complete creature anatomy fully visible");
+                AppendPromptToken(ref result, ref lower, "generous white margin around the complete creature");
+            }
+            else
+            {
+                AppendPromptToken(ref result, ref lower, "exactly one isolated object only, single centered object");
+                AppendPromptToken(ref result, ref lower, "complete object fully visible in a three-quarter front view");
+                AppendPromptToken(ref result, ref lower, "clear object silhouette and detailed material surfaces");
+                AppendPromptToken(ref result, ref lower, "generous white margin around the entire object");
+            }
+
+            AppendPromptToken(ref result, ref lower, "seamless pure white background");
+            AppendPromptToken(ref result, ref lower, "flat uniform catalog lighting");
+
+            if (!string.IsNullOrWhiteSpace(filtered))
+            {
+                result += ", " + filtered;
+            }
+
+            result = EnsureAssetDefaults(CompactCommaSeparatedPrompt(result), subjectKind);
+            return result.Length > 1200 ? result.Substring(0, 1200).Trim().TrimEnd(',') : result;
+        }
+
+        private static string FilterPromptSegments(
+            string content,
+            SubjectKind subjectKind,
+            bool isArcher,
+            bool allowsMagic,
+            bool requestsLooseGarment)
+        {
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return string.Empty;
+            }
+
+            List<string> kept = new List<string>();
+            foreach (string rawPart in content.Split(','))
+            {
+                string part = rawPart.Trim();
+                string lower = part.ToLowerInvariant();
+                if (string.IsNullOrWhiteSpace(part))
+                {
+                    continue;
+                }
+
+                if (lower.StartsWith("no ", StringComparison.Ordinal) ||
+                    lower.StartsWith("without ", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (ContainsAny(
+                    lower,
+                    "cinematic lighting",
+                    "soft shadow",
+                    "smooth gradient",
+                    "backdrop gradient",
+                    "spotlight",
+                    "pedestal",
+                    "platform",
+                    "environment",
+                    "scenery",
+                    "character reference sheet",
+                    "reference sheet",
+                    "turnaround sheet",
+                    "character sheet",
+                    "inset figure",
+                    "shadow figure",
+                    "background silhouette",
+                    "duplicate character",
+                    "multiple characters"))
+                {
+                    continue;
+                }
+
+                if (subjectKind == SubjectKind.Prop && ContainsAny(
+                    lower,
+                    "character",
+                    "humanoid",
+                    "person",
+                    "visible face",
+                    "facial feature",
+                    "eyes, nose",
+                    "full body",
+                    "full-body",
+                    "figure",
+                    "profession-specific",
+                    "wearing",
+                    "holding pose"))
+                {
+                    continue;
+                }
+
+                if (subjectKind == SubjectKind.Creature && ContainsAny(
+                    lower,
+                    "humanoid character",
+                    "human character",
+                    "person",
+                    "profession-specific equipment"))
+                {
+                    continue;
+                }
+
+                if (!allowsMagic && ContainsAny(lower, "elemental", "magic", "magical", "spell", "rune", "aura", "ethereal", "fireball", "flame", "glowing hand", "emanating from the fingers", "magic particles"))
+                {
+                    continue;
+                }
+
+                if (isArcher && ContainsAny(lower, "sword", "blade", "staff", "wand", "spellbook", "scepter", "mace", "axe", "spear"))
+                {
+                    continue;
+                }
+
+                if (isArcher && !requestsLooseGarment && ContainsAny(lower, "flowing robe", "long robe", "cloak", "cape", "gown"))
+                {
+                    continue;
+                }
+
+                kept.Add(part);
+            }
+
+            return string.Join(", ", kept);
+        }
+
+        private static SubjectKind ResolveSubjectKind(string subject, AigcAssetType assetType)
+        {
+            if (assetType == AigcAssetType.Character)
+            {
+                return SubjectKind.Character;
+            }
+            if (assetType == AigcAssetType.Creature)
+            {
+                return SubjectKind.Creature;
+            }
+            if (assetType == AigcAssetType.Prop)
+            {
+                return SubjectKind.Prop;
+            }
+
+            string lower = (subject ?? string.Empty).ToLowerInvariant();
+            if (ContainsAny(
+                lower,
+                "creature", "monster", "dragon", "beast", "animal", "wolf", "tiger", "lion", "horse",
+                "bird", "serpent", "spider", "dinosaur", "\u602a\u7269", "\u9f99", "\u91ce\u517d", "\u52a8\u7269"))
+            {
+                return SubjectKind.Creature;
+            }
+
+            if (ContainsAny(
+                lower,
+                "character", "person", "human", "humanoid", "woman", "female", "girl", "man", "male", "boy",
+                "elf", "fairy", "archer", "bowman", "warrior", "knight", "mage", "wizard", "sorcer", "witch",
+                "paladin", "rogue", "ranger", "druid", "priest", "soldier", "hunter", "assassin", "robot", "android",
+                "\u89d2\u8272", "\u4eba\u7269", "\u5f13\u7bad\u624b", "\u6218\u58eb", "\u6cd5\u5e08", "\u9a91\u58eb"))
+            {
+                return SubjectKind.Character;
+            }
+
+            if (ContainsAny(
+                lower,
+                "chest", "treasure box", "crate", "barrel", "helmet", "armor", "shield", "sword", "dagger",
+                "weapon", "staff", "wand", "potion", "bottle", "book", "chair", "table", "door", "key",
+                "ring", "amulet", "vehicle", "ship", "building", "house", "tower", "statue", "\u5b9d\u7bb1", "\u9053\u5177", "\u6b66\u5668"))
+            {
+                return SubjectKind.Prop;
+            }
+
+            return SubjectKind.Prop;
+        }
+
+        private static string BuildCompositionInstruction(SubjectKind subjectKind)
+        {
+            if (subjectKind == SubjectKind.Character)
+            {
+                return "one solo character only, centered complete full-body figure, front or three-quarter view, visible face, isolated product cutout on a pure white empty background.";
+            }
+            if (subjectKind == SubjectKind.Creature)
+            {
+                return "one creature only, centered complete anatomy, front or three-quarter view, isolated product cutout on a pure white empty background.";
+            }
+
+            return "exactly one standalone object only, complete object fully visible, centered three-quarter front view, isolated product cutout on a pure white empty background.";
+        }
+
+        private static bool ContainsAny(string value, params string[] terms)
+        {
+            if (string.IsNullOrEmpty(value) || terms == null)
+            {
+                return false;
+            }
+
+            foreach (string term in terms)
+            {
+                if (!string.IsNullOrEmpty(term) && value.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void AppendPromptToken(ref string result, ref string lower, string item)
